@@ -45,7 +45,7 @@ def model():
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     if update_ops:
         updates = tf.group(*update_ops)
-        train_op = control_flow_ops.with_dependencies([updates], train_op)
+        cross_entropy = control_flow_ops.with_dependencies([updates], cross_entropy)
 
     # train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 
