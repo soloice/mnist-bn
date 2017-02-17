@@ -60,9 +60,14 @@ def model():
 
 def train():
     # clear checkpoint directory
+    print('Clearing existed checkpoints and logs')
     for root, sub_folder, file_list in os.walk(FLAGS.checkpoint_dir):
         for f in file_list:
             os.remove(os.path.join(root, f))
+    for root, sub_folder, file_list in os.walk(FLAGS.train_log_dir):
+        for f in file_list:
+            os.remove(os.path.join(root, f))
+
     mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
     net = model()
     sess = tf.Session()
@@ -81,19 +86,19 @@ def train():
             # This does NOT imply the batch normalization is buggy.
             # On the contrary, it's BN's dynamics: moving_mean/variance are not estimated that well in the beginning.
 
-            # entropy, acc = sess.run([net['cross_entropy'], net['accuracy']],
-            #                         feed_dict={net['x']: batch_xs,
-            #                                    net['y_']: batch_ys,
-            #                                    net['keep_prob']: 1.0,
-            #                                    net['is_training']: False})
-            # print('Valid step {}: entropy {}: accuracy {}'.format(_, entropy, acc))
+            entropy, acc = sess.run([net['cross_entropy'], net['accuracy']],
+                                    feed_dict={net['x']: batch_xs,
+                                               net['y_']: batch_ys,
+                                               net['keep_prob']: 1.0,
+                                               net['is_training']: False})
+            print('\t\tValid step {}: entropy {}: accuracy {}'.format(_, entropy, acc))
             entropy, acc = sess.run([net['cross_entropy'], net['accuracy']],
                                     feed_dict={net['x']: batch_xs,
                                                net['y_']: batch_ys,
                                                net['keep_prob']: 1.0,
                                                net['is_training']: True})
             print('Train step {}: entropy {}: accuracy {}'.format(_, entropy, acc))
-    saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'my-model'))
+    saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'mnist-bn-github'))
     print('Finish training')
 
     # validation
@@ -106,6 +111,7 @@ def train():
                                                     net['is_training']: False})
         acc += acc_
     print('Overall validation accuracy {}'.format(acc / 50))
+    sess.close()
 
 
 def test():
@@ -129,6 +135,7 @@ def test():
                                                     net['is_training']: False})
         acc += acc_
     print('Overall test accuracy {}'.format(acc / 50))
+    sess.close()
 
 
 def main(_):
