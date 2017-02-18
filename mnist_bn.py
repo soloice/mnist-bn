@@ -39,23 +39,33 @@ def model():
     cross_entropy = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits))
 
+    step = tf.get_variable("step", [], initializer=tf.constant_initializer(0.0), trainable=False)
+    # train_step = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(cross_entropy, global_step=step)
     optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
-    train_op = slim.learning.create_train_op(cross_entropy, optimizer)
+    train_step = slim.learning.create_train_op(cross_entropy, optimizer, global_step=step)
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     if update_ops:
         updates = tf.group(*update_ops)
         cross_entropy = control_flow_ops.with_dependencies([updates], cross_entropy)
 
-    # train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+    # Add summaries for BN variables
+    tf.summary.scalar('accuracy', accuracy)
+    for v in tf.all_variables():
+        if v.name.startswith('fc1/Batch') or v.name.startswith('fc2/Batch') or v.name.startswith('logits/Batch'):
+            print(v.name)
+            tf.summary.histogram(v.name, v)
+    merged_summary_op = tf.summary.merge_all()
 
     return {'x': x,
             'y_': y_,
             'keep_prob': keep_prob,
             'is_training': is_training,
-            'train_step': train_op,
+            'train_step': train_step,
+            'global_step': step,
             'accuracy': accuracy,
-            'cross_entropy': cross_entropy}
+            'cross_entropy': cross_entropy,
+            'summary': merged_summary_op}
 
 
 def train():
@@ -73,32 +83,35 @@ def train():
     sess = tf.Session()
     saver = tf.train.Saver()
     sess.run(tf.global_variables_initializer())
-    # Train
-    for _ in range(8001):
-        batch_xs, batch_ys = mnist.train.next_batch(100)
-        # slim.learning.train(train_op, FLAGS.train_log_dir)
-        sess.run([net['train_step']], feed_dict={net['x']: batch_xs,
-                                                 net['y_']: batch_ys,
-                                                 net['keep_prob']: 0.5,
-                                                 net['is_training']: True})
-        if _ % 50 == 0:
-            # Note: the validation error is erratic in the beginning (Maybe 2~3k steps).
-            # This does NOT imply the batch normalization is buggy.
-            # On the contrary, it's BN's dynamics: moving_mean/variance are not estimated that well in the beginning.
+    train_writer = tf.summary.FileWriter(FLAGS.train_log_dir, sess.graph)
 
-            entropy, acc = sess.run([net['cross_entropy'], net['accuracy']],
-                                    feed_dict={net['x']: batch_xs,
-                                               net['y_']: batch_ys,
-                                               net['keep_prob']: 1.0,
-                                               net['is_training']: False})
-            print('\t\tValid step {}: entropy {}: accuracy {}'.format(_, entropy, acc))
+    # Train
+    for i in range(10001):
+        batch_xs, batch_ys = mnist.train.next_batch(50)
+        step, _ = sess.run([net['global_step'], net['train_step']], feed_dict={net['x']: batch_xs,
+                                                                               net['y_']: batch_ys,
+                                                                               net['keep_prob']: 0.5,
+                                                                               net['is_training']: True})
+        if step % 50 == 0:
             entropy, acc = sess.run([net['cross_entropy'], net['accuracy']],
                                     feed_dict={net['x']: batch_xs,
                                                net['y_']: batch_ys,
                                                net['keep_prob']: 1.0,
                                                net['is_training']: True})
-            print('Train step {}: entropy {}: accuracy {}'.format(_, entropy, acc))
-    saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'mnist-bn-github'))
+            print('Train step {}: entropy {}: accuracy {}'.format(step, entropy, acc))
+        if step % 200 == 0:
+            # Note: the validation error is erratic in the beginning (Maybe 2~3k steps).
+            # This does NOT imply the batch normalization is buggy.
+            # On the contrary, it's BN's dynamics: moving_mean/variance are not estimated that well in the beginning.
+            valid_dict = {net['x']: batch_xs,
+                          net['y_']: batch_ys,
+                          net['keep_prob']: 1.0,
+                          net['is_training']: False}
+            entropy, acc, summary = sess.run([net['cross_entropy'], net['accuracy'], net['summary']],
+                                             feed_dict=valid_dict)
+            train_writer.add_summary(summary, global_step=step)
+            print('***** Valid step {}: entropy {}: accuracy {} *****'.format(step, entropy, acc))
+    saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'mnist-conv-slim-bn-summary'))
     print('Finish training')
 
     # validation
@@ -127,14 +140,14 @@ def test():
         print("restore from the checkpoint {0}".format(ckpt))
 
     acc = 0.0
-    for i in range(50):
+    for i in range(100):
         batch_xs, batch_ys = mnist.test.next_batch(100)
         acc_ = sess.run(net['accuracy'], feed_dict={net['x']: batch_xs,
                                                     net['y_']: batch_ys,
                                                     net['keep_prob']: 1.0,
                                                     net['is_training']: False})
         acc += acc_
-    print('Overall test accuracy {}'.format(acc / 50))
+    print('Overall test accuracy {}'.format(acc / 100))
     sess.close()
 
 
@@ -151,9 +164,11 @@ if __name__ == '__main__':
                         help='Directory for storing input data')
     parser.add_argument('--phase', type=str, default='train',
                         help='Training or test phase, should be one of {"train", "test"}')
-    parser.add_argument('--train_log_dir', type=str, default='log',
+    parser.add_argument('--train_log_dir', type=str, default='log-conv-slim-bn-sum',
                         help='Directory for logs')
-    parser.add_argument('--checkpoint_dir', type=str, default='checkpoint',
+    parser.add_argument('--checkpoint_dir', type=str, default='checkpoint-conv-slim-bn-sum',
                         help='Directory for checkpoint file')
     FLAGS, unparsed = parser.parse_known_args()
+    if not os.path.isdir(FLAGS.checkpoint_dir):
+        os.mkdir(FLAGS.checkpoint_dir)
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
