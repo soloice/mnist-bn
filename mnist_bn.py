@@ -51,8 +51,10 @@ def model():
 
     # Add summaries for BN variables
     tf.summary.scalar('accuracy', accuracy)
+    tf.summary.scalar('cross_entropy', cross_entropy)
     for v in tf.all_variables():
-        if v.name.startswith('fc1/Batch') or v.name.startswith('fc2/Batch') or v.name.startswith('logits/Batch'):
+        if v.name.startswith('conv1/Batch') or v.name.startswith('conv2/Batch') or \
+                v.name.startswith('fc1/Batch') or v.name.startswith('logits/Batch'):
             print(v.name)
             tf.summary.histogram(v.name, v)
     merged_summary_op = tf.summary.merge_all()
@@ -83,23 +85,27 @@ def train():
     sess = tf.Session()
     saver = tf.train.Saver()
     sess.run(tf.global_variables_initializer())
-    train_writer = tf.summary.FileWriter(FLAGS.train_log_dir, sess.graph)
+    train_writer = tf.summary.FileWriter(os.path.join(FLAGS.train_log_dir, 'train'), sess.graph)
+    valid_writer = tf.summary.FileWriter(os.path.join(FLAGS.train_log_dir, 'valid'), sess.graph)
 
     # Train
     for i in range(10001):
         batch_xs, batch_ys = mnist.train.next_batch(50)
-        step, _ = sess.run([net['global_step'], net['train_step']], feed_dict={net['x']: batch_xs,
-                                                                               net['y_']: batch_ys,
-                                                                               net['keep_prob']: 0.5,
-                                                                               net['is_training']: True})
+        train_dict = {net['x']: batch_xs,
+                      net['y_']: batch_ys,
+                      net['keep_prob']: 0.5,
+                      net['is_training']: True}
+        step, _ = sess.run([net['global_step'], net['train_step']], feed_dict=train_dict)
         if step % 50 == 0:
-            entropy, acc = sess.run([net['cross_entropy'], net['accuracy']],
-                                    feed_dict={net['x']: batch_xs,
-                                               net['y_']: batch_ys,
-                                               net['keep_prob']: 1.0,
-                                               net['is_training']: True})
+            train_dict = {net['x']: batch_xs,
+                          net['y_']: batch_ys,
+                          net['keep_prob']: 1.0,
+                          net['is_training']: True}
+            entropy, acc, summary = sess.run([net['cross_entropy'], net['accuracy'], net['summary']],
+                                             feed_dict=train_dict)
+            train_writer.add_summary(summary, global_step=step)
             print('Train step {}: entropy {}: accuracy {}'.format(step, entropy, acc))
-        if step % 200 == 0:
+
             # Note: the validation error is erratic in the beginning (Maybe 2~3k steps).
             # This does NOT imply the batch normalization is buggy.
             # On the contrary, it's BN's dynamics: moving_mean/variance are not estimated that well in the beginning.
@@ -109,19 +115,20 @@ def train():
                           net['is_training']: False}
             entropy, acc, summary = sess.run([net['cross_entropy'], net['accuracy'], net['summary']],
                                              feed_dict=valid_dict)
-            train_writer.add_summary(summary, global_step=step)
+            valid_writer.add_summary(summary, global_step=step)
             print('***** Valid step {}: entropy {}: accuracy {} *****'.format(step, entropy, acc))
-    saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'mnist-conv-slim-bn-summary'))
+    saver.save(sess, os.path.join(FLAGS.checkpoint_dir, 'mnist-conv-slim'))
     print('Finish training')
 
     # validation
     acc = 0.0
     for i in range(50):
         batch_xs, batch_ys = mnist.validation.next_batch(100)
-        acc_ = sess.run(net['accuracy'], feed_dict={net['x']: batch_xs,
-                                                    net['y_']: batch_ys,
-                                                    net['keep_prob']: 1.0,
-                                                    net['is_training']: False})
+        test_dict = {net['x']: batch_xs,
+                     net['y_']: batch_ys,
+                     net['keep_prob']: 1.0,
+                     net['is_training']: False}
+        acc_ = sess.run(net['accuracy'], feed_dict=test_dict)
         acc += acc_
     print('Overall validation accuracy {}'.format(acc / 50))
     sess.close()
@@ -142,10 +149,11 @@ def test():
     acc = 0.0
     for i in range(100):
         batch_xs, batch_ys = mnist.test.next_batch(100)
-        acc_ = sess.run(net['accuracy'], feed_dict={net['x']: batch_xs,
-                                                    net['y_']: batch_ys,
-                                                    net['keep_prob']: 1.0,
-                                                    net['is_training']: False})
+        feed_dict = {net['x']: batch_xs,
+                     net['y_']: batch_ys,
+                     net['keep_prob']: 1.0,
+                     net['is_training']: False}
+        acc_ = sess.run(net['accuracy'], feed_dict=feed_dict)
         acc += acc_
     print('Overall test accuracy {}'.format(acc / 100))
     sess.close()
@@ -164,9 +172,9 @@ if __name__ == '__main__':
                         help='Directory for storing input data')
     parser.add_argument('--phase', type=str, default='train',
                         help='Training or test phase, should be one of {"train", "test"}')
-    parser.add_argument('--train_log_dir', type=str, default='log-conv-slim-bn-sum',
+    parser.add_argument('--train_log_dir', type=str, default='log',
                         help='Directory for logs')
-    parser.add_argument('--checkpoint_dir', type=str, default='checkpoint-conv-slim-bn-sum',
+    parser.add_argument('--checkpoint_dir', type=str, default='checkpoint',
                         help='Directory for checkpoint file')
     FLAGS, unparsed = parser.parse_known_args()
     if not os.path.isdir(FLAGS.checkpoint_dir):
