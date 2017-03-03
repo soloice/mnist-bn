@@ -2,7 +2,7 @@
 Using slim to perform batch normalization
 
 Run `python mnist_bn.py --phase=train` to train.
-Run `python mnist_bn.py --phase=train` to test.
+Run `python mnist_bn.py --phase=test` to test.
 
 Now I know **the keys to use batch normalization in `slim`**:
 
