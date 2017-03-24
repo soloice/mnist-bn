@@ -20,11 +20,10 @@ def model():
     keep_prob = tf.placeholder(tf.float32, [])
     y_ = tf.placeholder(tf.float32, [None, 10])
     is_training = tf.placeholder(tf.bool, [])
-
     x_image = tf.reshape(x, [-1, 28, 28, 1])
     with slim.arg_scope([slim.conv2d, slim.fully_connected],
                         normalizer_fn=slim.batch_norm,
-                        normalizer_params={'is_training': is_training}):
+                        normalizer_params={'is_training': is_training, 'decay': 0.9}):
         conv1 = slim.conv2d(x_image, 32, [5, 5], scope='conv1')
         pool1 = slim.max_pool2d(conv1, [2, 2], scope='pool1')
         conv2 = slim.conv2d(pool1, 64, [5, 5], scope='conv2')
@@ -40,7 +39,6 @@ def model():
         tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits))
 
     step = tf.get_variable("step", [], initializer=tf.constant_initializer(0.0), trainable=False)
-    # train_step = tf.train.GradientDescentOptimizer(learning_rate=0.1).minimize(cross_entropy, global_step=step)
     optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
     train_step = slim.learning.create_train_op(cross_entropy, optimizer, global_step=step)
 
