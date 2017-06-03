@@ -22,11 +22,12 @@ def model():
     is_training = tf.placeholder(tf.bool, [])
     x_image = tf.reshape(x, [-1, 28, 28, 1])
     with slim.arg_scope([slim.conv2d, slim.fully_connected],
+                        activation_fn=tf.nn.crelu,
                         normalizer_fn=slim.batch_norm,
-                        normalizer_params={'is_training': is_training, 'decay': 0.9}):
-        conv1 = slim.conv2d(x_image, 32, [5, 5], scope='conv1')
+                        normalizer_params={'is_training': is_training, 'decay': 0.95}):
+        conv1 = slim.conv2d(x_image, 16, [5, 5], scope='conv1')
         pool1 = slim.max_pool2d(conv1, [2, 2], scope='pool1')
-        conv2 = slim.conv2d(pool1, 64, [5, 5], scope='conv2')
+        conv2 = slim.conv2d(pool1, 32, [5, 5], scope='conv2')
         pool2 = slim.max_pool2d(conv2, [2, 2], scope='pool2')
         flatten = slim.flatten(pool2)
         fc = slim.fully_connected(flatten, 1024, scope='fc1')
