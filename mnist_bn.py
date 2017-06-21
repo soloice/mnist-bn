@@ -88,8 +88,9 @@ def train():
     valid_writer = tf.summary.FileWriter(os.path.join(FLAGS.train_log_dir, 'valid'), sess.graph)
 
     # Train
+    batch_size = FLAGS.batch_size
     for i in range(10001):
-        batch_xs, batch_ys = mnist.train.next_batch(50)
+        batch_xs, batch_ys = mnist.train.next_batch(batch_size)
         train_dict = {net['x']: batch_xs,
                       net['y_']: batch_ys,
                       net['keep_prob']: 0.5,
@@ -121,15 +122,17 @@ def train():
 
     # validation
     acc = 0.0
-    for i in range(50):
-        batch_xs, batch_ys = mnist.validation.next_batch(100)
+    batch_size = FLAGS.batch_size
+    num_iter = 5000 // batch_size
+    for i in range(num_iter):
+        batch_xs, batch_ys = mnist.validation.next_batch(batch_size)
         test_dict = {net['x']: batch_xs,
                      net['y_']: batch_ys,
                      net['keep_prob']: 1.0,
                      net['is_training']: False}
         acc_ = sess.run(net['accuracy'], feed_dict=test_dict)
         acc += acc_
-    print('Overall validation accuracy {}'.format(acc / 50))
+    print('Overall validation accuracy {}'.format(acc / num_iter))
     sess.close()
 
 
@@ -146,15 +149,17 @@ def test():
         print("restore from the checkpoint {0}".format(ckpt))
 
     acc = 0.0
-    for i in range(100):
-        batch_xs, batch_ys = mnist.test.next_batch(100)
+    batch_size = FLAGS.batch_size
+    num_iter = 10000 // batch_size
+    for i in range(num_iter):
+        batch_xs, batch_ys = mnist.test.next_batch(batch_size)
         feed_dict = {net['x']: batch_xs,
                      net['y_']: batch_ys,
                      net['keep_prob']: 1.0,
                      net['is_training']: False}
         acc_ = sess.run(net['accuracy'], feed_dict=feed_dict)
         acc += acc_
-    print('Overall test accuracy {}'.format(acc / 100))
+    print('Overall test accuracy {}'.format(acc / num_iter))
     sess.close()
 
 
@@ -170,6 +175,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str, default='MNIST_data',
                         help='Directory for storing input data')
     parser.add_argument('--phase', type=str, default='train',
+                        help='Training or test phase, should be one of {"train", "test"}')
+    parser.add_argument('--batch_size', type=int, default=50,
                         help='Training or test phase, should be one of {"train", "test"}')
     parser.add_argument('--train_log_dir', type=str, default='log',
                         help='Directory for logs')
