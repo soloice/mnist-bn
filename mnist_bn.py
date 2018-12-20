@@ -10,6 +10,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python import debug as tf_debug
 
 FLAGS = None
 
@@ -23,8 +24,8 @@ def model():
     x_image = tf.reshape(x, [-1, 28, 28, 1])
     with slim.arg_scope([slim.conv2d, slim.fully_connected],
                         activation_fn=tf.nn.crelu,
-                        normalizer_fn=slim.batch_norm,
-                        normalizer_params={'is_training': is_training, 'decay': 0.95}):
+                        normalizer_fn=tf.layers.batch_normalization,
+                        normalizer_params={'training': is_training, 'momentum': 0.95}):
         conv1 = slim.conv2d(x_image, 16, [5, 5], scope='conv1')
         pool1 = slim.max_pool2d(conv1, [2, 2], scope='pool1')
         conv2 = slim.conv2d(pool1, 32, [5, 5], scope='conv2')
@@ -40,21 +41,21 @@ def model():
         tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits))
 
     step = tf.get_variable("step", [], initializer=tf.constant_initializer(0.0), trainable=False)
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.2)
     train_step = slim.learning.create_train_op(cross_entropy, optimizer, global_step=step)
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     if update_ops:
+        print("BN parameters: ", update_ops)
         updates = tf.group(*update_ops)
-        cross_entropy = control_flow_ops.with_dependencies([updates], cross_entropy)
+        train_step = control_flow_ops.with_dependencies([updates], train_step)
 
     # Add summaries for BN variables
     tf.summary.scalar('accuracy', accuracy)
     tf.summary.scalar('cross_entropy', cross_entropy)
     for v in tf.all_variables():
-        if v.name.startswith('conv1/Batch') or v.name.startswith('conv2/Batch') or \
-                v.name.startswith('fc1/Batch') or v.name.startswith('logits/Batch'):
-            print(v.name)
+        print(v.name)
+        if 'batch_normalization' in v.name:
             tf.summary.histogram(v.name, v)
     merged_summary_op = tf.summary.merge_all()
 
@@ -82,6 +83,11 @@ def train():
     mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
     net = model()
     sess = tf.Session()
+
+    # DEBUGGING
+    # sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    # sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+
     saver = tf.train.Saver()
     sess.run(tf.global_variables_initializer())
     train_writer = tf.summary.FileWriter(os.path.join(FLAGS.train_log_dir, 'train'), sess.graph)
